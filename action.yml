@@ -4,7 +4,8 @@ description: |
   This action will automatically make suggestions to PRs to fix style issues.
   Write "bot fix style" in a comment to have a bot apply all style suggestions.
 
-  This action is intended to run in two workflows, with different `mode` settings.
+  This action is intended to run in multiple workflows, with different `mode` settings.
+  * on pushes to branches, run this action in mode `check` to run the linters.
   * on `pull_request`, run this action in mode `suggest` to run the linters and comment with suggestions.
   * on `issue_comment`, `pull_request_review` or `pull_request_review_comment` (with types `[created, edited`),
     run this action in mode `fix` to listen for "bot fix style" comments and apply the suggestions.
@@ -13,9 +14,10 @@ inputs:
   mode:
     description: |
       The actions taken based on style linter output.
+      When set to `check`, this action runs the style linters.
       When set to `suggest`, this action adds review comments with suggestions.
       When set to `fix`, this action looks for a "bot fix style" comment and pushes a commit with the suggested fixes.
-      Allowed values: "suggest" or "fix".
+      Allowed values: "check", "suggest" or "fix".
     required: true
   lint-bib-file:
     description: |
@@ -98,17 +100,17 @@ runs:
           GH_TOKEN: ${{ secrets.BOT_FIX_STYLE_TOKEN }}
 
     - name: cleanup
-      if: ${{ inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
       run: |
         find . -name . -o -prune -exec rm -rf -- {} +
 
     - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      if: ${{ inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
       with:
         token: ${{ secrets.BOT_FIX_STYLE_TOKEN }}
 
     - name: Checkout PR branch
-      if: ${{ inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
       run: |
           # covers `comment`s
           gh pr checkout ${{ github.event.issue.number }} ||
@@ -117,19 +119,48 @@ runs:
       env:
           GH_TOKEN: ${{ secrets.BOT_FIX_STYLE_TOKEN }}
 
+
+    # Run the case checker action
+    - name: Check Case Sensitivity
+      if: ${{ inputs.mode == 'check' }}
+      uses: credfeto/action-case-checker@cb652aeab29ed363bbdb7d9ee1bfcc010c46cac5 # v1.3.0
+
+    - name: Look for ignored files
+      uses
+      if: ${{ inputs.mode == 'check' }}
+credfeto/action-no-ignored-files@4fccae50720d89bef0cd9dc99a85a19b765d2e70 # v1.2.0
+
+    - name: "Check for Lean files with the executable bit set"
+      if: ${{ inputs.mode == 'check' }}
+      shell: bash
+      run: |
+        executable_files="$(find . -name '*.lean' -type f \( -perm -u=x -o -perm -g=x -o -perm -o=x \))"
+        if [[ -n "$executable_files" ]]
+        then
+          echo "ERROR: The following Lean files have the executable bit set."
+          echo "$executable_files"
+          exit 1
+        fi
+
+
     - name: install Python
-      if: ${{ inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
       uses: actions/setup-python@8d9ed9ac5c53483de85588cdf95a591a75ab9f55 # v5.5.0
       with:
         python-version: 3.8
 
     - name: Configure Lean
-      if: ${{ inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
       uses: leanprover/lean-action@e18f2df7f0d4f30d11a4b963bff9b1140999480c # 2025-04-22
       with:
         auto-config: false
         use-github-cache: false
         use-mathlib-cache: false
+
+    - name: lint
+      if: ${{ inputs.mode == 'check' }}
+      run: |
+        lake exe lint-style
 
     - name: lint
       if: ${{ inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
@@ -143,13 +174,13 @@ runs:
         tool_name: lint-style (comment with "bot fix style" to have the bot commit all style suggestions)
 
     - name: Install bibtool
-      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true') }}
+      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true') }}
       run: |
         sudo apt-get update
         sudo apt-get install -y bibtool
 
     - name: lint references.bib
-      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
       run: |
         # ignoring the return code allows the following `reviewdog` step to add GitHub suggestions
         ./scripts/lint-bib.sh || true
