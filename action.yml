@@ -38,6 +38,7 @@ runs:
     - name: Find bot fix style
       if: ${{ inputs.mode == 'fix' }}
       id: bot_fix_style
+      shell: bash
       run: |
         COMMENT="${COMMENT_EVENT}${COMMENT_REVIEW}${COMMENT_REVIEW_COMMENT}"
         # we strip `\r` since line endings from GitHub contain this character
@@ -90,6 +91,7 @@ runs:
       # is the `id` check a good way to check that this is a `review_comment`?
       if: ${{ inputs.mode == 'fix' && steps.user_permission.outputs.require-result == 'true' &&
               ! github.event.pull_request_review_comment.id == '' }}
+      shell: bash
       run: |
           gh api --method POST \
             -H "Accept: application/vnd.github+json" \
@@ -101,6 +103,7 @@ runs:
 
     - name: cleanup
       if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+      shell: bash
       run: |
         find . -name . -o -prune -exec rm -rf -- {} +
 
@@ -111,6 +114,7 @@ runs:
 
     - name: Checkout PR branch
       if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+      shell: bash
       run: |
           # covers `comment`s
           gh pr checkout ${{ github.event.issue.number }} ||
@@ -126,9 +130,8 @@ runs:
       uses: credfeto/action-case-checker@cb652aeab29ed363bbdb7d9ee1bfcc010c46cac5 # v1.3.0
 
     - name: Look for ignored files
-      uses
       if: ${{ inputs.mode == 'check' }}
-credfeto/action-no-ignored-files@4fccae50720d89bef0cd9dc99a85a19b765d2e70 # v1.2.0
+      uses: credfeto/action-no-ignored-files@4fccae50720d89bef0cd9dc99a85a19b765d2e70 # v1.2.0
 
     - name: "Check for Lean files with the executable bit set"
       if: ${{ inputs.mode == 'check' }}
@@ -159,11 +162,13 @@ credfeto/action-no-ignored-files@4fccae50720d89bef0cd9dc99a85a19b765d2e70 # v1.2
 
     - name: lint
       if: ${{ inputs.mode == 'check' }}
+      shell: bash
       run: |
         lake exe lint-style
 
     - name: lint
       if: ${{ inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+      shell: bash
       run: |
         lake exe lint-style --fix
 
@@ -175,12 +180,14 @@ credfeto/action-no-ignored-files@4fccae50720d89bef0cd9dc99a85a19b765d2e70 # v1.2
 
     - name: Install bibtool
       if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true') }}
+      shell: bash
       run: |
         sudo apt-get update
         sudo apt-get install -y bibtool
 
     - name: lint references.bib
       if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+      shell: bash
       run: |
         # ignoring the return code allows the following `reviewdog` step to add GitHub suggestions
         ./scripts/lint-bib.sh || true
@@ -193,6 +200,7 @@ credfeto/action-no-ignored-files@4fccae50720d89bef0cd9dc99a85a19b765d2e70 # v1.2
 
     - name: update {Mathlib, Tactic, Counterexamples, Archive}.lean
       if: ${{ inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+      shell: bash
       run: |
         # ignoring the return code allows the following `reviewdog` step to add GitHub suggestions
         lake exe mk_all || true
@@ -205,6 +213,7 @@ credfeto/action-no-ignored-files@4fccae50720d89bef0cd9dc99a85a19b765d2e70 # v1.2
 
     - name: Commit and push changes
       if: steps.user_permission.outputs.require-result == 'true'
+      shell: bash
       run: |
         # cleanup junk from build
         rm docs/references.bib.old
