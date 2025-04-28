@@ -190,7 +190,7 @@ runs:
         sudo apt-get install -y bibtool
 
     - name: lint references.bib
-      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true') }}
       shell: bash
       run: |
         # ignoring the return code allows the following `reviewdog` step to add GitHub suggestions
