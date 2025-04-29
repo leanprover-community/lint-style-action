@@ -111,11 +111,13 @@ runs:
       run: |
         find . -name . -o -prune -exec rm -rf -- {} +
 
-    - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+    # In `fix` mode, we can't directly checkout the code, see the "Checkout PR branch (fix)" step for that case.
+    - name: Checkout PR branch (check/suggest)
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
 
-    - name: Checkout PR branch
-      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
+    - name: Checkout PR branch (fix)
+      if: ${{ steps.user_permission.outputs.require-result == 'true' }}
       shell: bash
       run: |
           # covers `comment`s
