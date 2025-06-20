@@ -28,6 +28,11 @@ inputs:
     description: |
       Secret token used by the style bot to interact with GitHub. Only required for the `fix` mode.
     required: false
+  ref:
+    description: |
+      The branch, tag or SHA to lint. This defaults to the reference or SHA for the event that triggered the workflow.
+  default: ''
+  required: false
 
 outputs:
   user_permission:
@@ -114,6 +119,8 @@ runs:
     # In `fix` mode, we can't directly checkout the code, see the "Checkout PR branch (fix)" step for that case.
     - name: Checkout PR branch (check/suggest)
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        ref: ${{ inputs.ref }}
       if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
 
     - name: Checkout PR branch (fix)
