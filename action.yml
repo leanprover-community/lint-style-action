@@ -196,8 +196,14 @@ runs:
         sudo apt-get update
         sudo apt-get install -y bibtool
 
-    - name: lint references.bib
-      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true') }}
+    - name: lint references.bib (check)
+      if: ${{ inputs.lint-bib-file == 'true' && inputs.mode == 'check' }}
+      shell: bash
+      run: |
+        ./scripts/lint-bib.sh
+
+    - name: lint references.bib (suggest)
+      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true') }}
       shell: bash
       run: |
         # ignoring the return code allows the following `reviewdog` step to add GitHub suggestions
