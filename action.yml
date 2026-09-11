@@ -48,8 +48,17 @@ runs:
       if: ${{ inputs.mode == 'fix' }}
       id: bot_fix_style
       shell: bash
+      # `issue_comment` and `pull_request_review_comment` both deliver the comment as
+      # `github.event.comment`; `pull_request_review` delivers it as `github.event.review`.
+      # At most one of the two is set for any given event, so concatenating is safe.
+      # These go through `env` rather than `${{ }}` in `run` so that a comment body cannot
+      # be interpolated into the script.
+      env:
+        COMMENT_EVENT: ${{ github.event.comment.body }}
+        COMMENT_REVIEW: ${{ github.event.review.body }}
+        AUTHOR: ${{ github.event.comment.user.login }}${{ github.event.review.user.login }}
       run: |
-        COMMENT="${COMMENT_EVENT}${COMMENT_REVIEW}${COMMENT_REVIEW_COMMENT}"
+        COMMENT="${COMMENT_EVENT}${COMMENT_REVIEW}"
         # we strip `\r` since line endings from GitHub contain this character
         COMMENT="${COMMENT//$'\r'/}"
         # for debugging, we print some information
