@@ -44,6 +44,23 @@ outputs:
 runs:
   using: "composite"
   steps:
+    # Every step below is gated on `mode`, so an unrecognised value gates all of them off --
+    # including the checkout -- and the action reports success having done nothing. Callers
+    # pin this action by SHA, so that is also what a pin predating a new mode looks like.
+    # Fail loudly instead.
+    - name: Check the mode
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+      run: |
+        case "${MODE}" in
+          check|suggest|fix) ;;
+          *)
+            printf '::error::unknown mode %s: expected one of check, suggest, fix\n' "${MODE}"
+            exit 1
+            ;;
+        esac
+
     - name: Find bot fix style
       if: ${{ inputs.mode == 'fix' }}
       id: bot_fix_style
