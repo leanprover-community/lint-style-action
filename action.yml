@@ -93,28 +93,28 @@ runs:
     # from now on, it is sufficient to just check `user_permission`:
     # if the comment did not contain `bot fix style`,
     # then `user_permission` would not have ran
+
+    # Reactions are only supported on `issue_comment`s and `pull_request_review_comment`s;
+    # a `pull_request_review` has nothing to react to, so it gets no step.
+    # The two comment kinds have separate id spaces and separate endpoints, so they have to
+    # be told apart by `github.event_name` -- both carry `github.event.comment.id`.
     - name: Add reaction (comment)
-      # reactions are only supported for `comment`s and `review_comment`s?
-      # This action only runs on `comment`s rather than `review`s or `review_comment`s
-      # Is the `id` check a good way to check that this is a `comment`?
       if: ${{ inputs.mode == 'fix' && steps.user_permission.outputs.require-result == 'true' &&
-              ! github.event.comment.id == '' }}
+              github.event_name == 'issue_comment' }}
       uses: peter-evans/create-or-update-comment@71345be0265236311c031f5c7866368bd1eff043 # v4.0.0
       with:
         comment-id: ${{ github.event.comment.id }}
         reactions: rocket
 
     - name: Add reaction (review comment)
-      # this action only runs on `review_comment`s
-      # is the `id` check a good way to check that this is a `review_comment`?
       if: ${{ inputs.mode == 'fix' && steps.user_permission.outputs.require-result == 'true' &&
-              ! github.event.pull_request_review_comment.id == '' }}
+              github.event_name == 'pull_request_review_comment' }}
       shell: bash
       run: |
           gh api --method POST \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            /repos/${{ github.repository_owner }}/${{ github.event.repository.name }}/pulls/comments/${{ github.event.comment.id }}/reactions \
+            "/repos/${{ github.repository }}/pulls/comments/${{ github.event.comment.id }}/reactions" \
             -f "content=rocket"
       env:
           GH_TOKEN: ${{ inputs.BOT_FIX_STYLE_TOKEN }}
