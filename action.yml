@@ -252,8 +252,9 @@ runs:
       if: steps.user_permission.outputs.require-result == 'true'
       shell: bash
       run: |
-        # cleanup junk from build
-        rm docs/references.bib.old
+        # cleanup junk from build; `scripts/lint-bib.sh` only writes this backup when
+        # `lint-bib-file` is enabled, and `bash -e` would abort the push without the `-f`
+        rm -f docs/references.bib.old
         # setup commit and push
         git config user.name "leanprover-community-mathlib4-bot"
         git config user.email "leanprover-community-mathlib4-bot@users.noreply.github.com"
