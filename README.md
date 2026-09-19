@@ -41,6 +41,8 @@ Allowed values: "true" or "false". Default value: "false".
 
 Secret token used by the style bot to check out the pull request, push the style commit and react to a review comment. Only used in `fix` mode, and defaults to the workflow's own `GITHUB_TOKEN`. When in doubt, set this to the value of `secrets.GITHUB_TOKEN`.
 
+Note that `fix` mode can only update a pull request whose branch lives in the repository itself. For a pull request from a fork, the style commit has to be pushed to the fork, which `secrets.GITHUB_TOKEN` cannot do; this input then has to be a token with write access to the fork.
+
 ### Input: `ref`
 
 The branch, tag or SHA to lint. This defaults to the reference or SHA for the event that triggered the workflow. This corresponds to the `ref` input of [actions/checkout](https://github.com/actions/checkout).

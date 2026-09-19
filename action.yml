@@ -261,4 +261,23 @@ runs:
         git add .
         # Don't fail if there's nothing to commit
         git commit -m "commit changes from style linters" || true
-        git push origin HEAD
+        # `gh pr checkout` points the branch at the pull request's head repository, which is a
+        # fork for most pull requests. Pushing to an explicit `origin` would ignore that and
+        # create a branch in *this* repository instead of updating the pull request, so push to
+        # the remote `gh` recorded. Naming the ref explicitly rather than relying on
+        # `push.default` also covers a local branch named differently from the head ref.
+        BRANCH="$(git branch --show-current)"
+        REMOTE="$(git config --get "branch.${BRANCH}.pushRemote" ||
+                  git config --get "branch.${BRANCH}.remote" || true)"
+        REF="$(git config --get "branch.${BRANCH}.merge" || true)"
+        if [ -z "${REMOTE}" ] || [ -z "${REF}" ]
+        then
+          printf '::error::branch %s has no upstream; `gh pr checkout` should have set one\n' "${BRANCH}"
+          exit 1
+        fi
+        if ! git push "${REMOTE}" "HEAD:${REF}"
+        then
+          printf '::error::could not push the style fixes to %s\n' "${REMOTE}"
+          printf '::error::For a pull request from a fork, the commit has to be pushed to the fork: BOT_FIX_STYLE_TOKEN needs write access to it, which `secrets.GITHUB_TOKEN` does not have.\n'
+          exit 1
+        fi
