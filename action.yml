@@ -254,7 +254,7 @@ runs:
       shell: bash
       run: |
         # cleanup junk from build; `scripts/lint-bib.sh` only writes this backup when
-        # `lint-bib-file` is enabled, and `bash -e` would abort the push without the `-f`
+        # `lint-bib-file` is enabled, so `-f` is required
         rm -f docs/references.bib.old
         # setup commit and push
         git config user.name "leanprover-community-mathlib4-bot"
