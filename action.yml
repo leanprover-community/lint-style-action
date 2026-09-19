@@ -6,6 +6,9 @@ description: |
   This action is intended to run in multiple workflows, with different `mode` settings.
   * on pushes to branches, run this action in mode `check` to run the linters.
   * on `pull_request`, run this action in mode `suggest` to run the linters and comment with suggestions.
+  * on `pull_request`, run this action in mode `autofix` to run the linters and leave the fixes in the
+    working tree, without commenting. This is for callers that push the fixes themselves (e.g. via
+    `pre-commit-ci/lite-action`); it is `suggest` minus the review comments.
 
 inputs:
   mode:
@@ -13,7 +16,10 @@ inputs:
       The actions taken based on style linter output.
       When set to `check`, this action runs the style linters.
       When set to `suggest`, this action adds review comments with suggestions.
-      Allowed values: "check" or "suggest".
+      When set to `autofix`, this action applies the same fixes as `suggest` but leaves them
+      uncommitted in the working tree instead of posting review comments. The caller is
+      responsible for doing something with them.
+      Allowed values: "check", "suggest" or "autofix".
     required: true
   lint-bib-file:
     description: |
@@ -30,7 +36,7 @@ runs:
   using: "composite"
   steps:
     - name: cleanup
-      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
+      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || inputs.mode == 'autofix' }}
       shell: bash
       run: |
         find . -name . -o -prune -exec rm -rf -- {} +
@@ -39,7 +45,7 @@ runs:
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       with:
         ref: ${{ inputs.ref }}
-      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
+      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || inputs.mode == 'autofix' }}
 
     # Run the case checker action
     - name: Check Case Sensitivity
@@ -64,13 +70,13 @@ runs:
 
 
     - name: install Python
-      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
+      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || inputs.mode == 'autofix' }}
       uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
         python-version: 3.8
 
     - name: Configure Lean
-      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
+      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || inputs.mode == 'autofix' }}
       uses: leanprover/lean-action@f807b338d95de7813c5c50d018f1c23c9b93b4ec # 2025-04-24
       with:
         auto-config: false
@@ -84,7 +90,7 @@ runs:
         lake exe lint-style
 
     - name: lint
-      if: ${{ inputs.mode == 'suggest' }}
+      if: ${{ inputs.mode == 'suggest' || inputs.mode == 'autofix' }}
       shell: bash
       run: |
         lake exe lint-style --fix
@@ -96,7 +102,7 @@ runs:
         tool_name: lint-style
 
     - name: Install bibtool
-      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'check' || inputs.mode == 'suggest') }}
+      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'check' || inputs.mode == 'suggest' || inputs.mode == 'autofix') }}
       shell: bash
       run: |
         sudo apt-get update
@@ -108,11 +114,13 @@ runs:
       run: |
         ./scripts/lint-bib.sh
 
-    - name: lint references.bib (suggest)
-      if: ${{ inputs.lint-bib-file == 'true' && inputs.mode == 'suggest' }}
+    - name: lint references.bib (suggest/autofix)
+      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'suggest' || inputs.mode == 'autofix') }}
       shell: bash
       run: |
-        # ignoring the return code allows the following `reviewdog` step to add GitHub suggestions
+        # `lint-bib.sh` exits non-zero when it rewrote the file; ignoring that lets the
+        # `reviewdog` step below turn the rewrite into suggestions, and lets `autofix` carry
+        # on to the remaining fixers
         ./scripts/lint-bib.sh || true
 
     - name: suggester / lint-bib
@@ -121,11 +129,21 @@ runs:
       with:
         tool_name: lint-bib
 
+    - name: remove references.bib backup
+      # `scripts/lint-bib.sh` copies `docs/references.bib` to `docs/references.bib.old` before
+      # rewriting it. `suggest` mode never shows that file to anyone, but `autofix` hands the
+      # working tree to the caller, and mathlib4 does not gitignore the path -- so without this
+      # the backup lands in whatever commit the caller makes.
+      if: ${{ inputs.lint-bib-file == 'true' && inputs.mode == 'autofix' }}
+      shell: bash
+      run: rm -f docs/references.bib.old
+
     - name: update {Mathlib, Tactic, Counterexamples, Archive}.lean
-      if: ${{ inputs.mode == 'suggest' }}
+      if: ${{ inputs.mode == 'suggest' || inputs.mode == 'autofix' }}
       shell: bash
       run: |
-        # ignoring the return code allows the following `reviewdog` step to add GitHub suggestions
+        # as with `lint-bib.sh` above: a non-zero exit here means the import list was out of
+        # date, which is the thing the following steps are meant to report or apply, not a failure
         lake exe mk_all || true
 
     - name: suggester / import list
