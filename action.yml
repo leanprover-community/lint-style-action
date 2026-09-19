@@ -26,7 +26,9 @@ inputs:
     default: "false"
   BOT_FIX_STYLE_TOKEN:
     description: |
-      Secret token used by the style bot to interact with GitHub. Only required for the `fix` mode.
+      Secret token used by the style bot to check out the pull request, push the style commit and
+      react to a review comment. Only used in `fix` mode, and defaults to the workflow's own
+      `GITHUB_TOKEN`.
     required: false
   ref:
     description: |
@@ -117,7 +119,7 @@ runs:
             "/repos/${{ github.repository }}/pulls/comments/${{ github.event.comment.id }}/reactions" \
             -f "content=rocket"
       env:
-          GH_TOKEN: ${{ inputs.BOT_FIX_STYLE_TOKEN }}
+          GH_TOKEN: ${{ inputs.BOT_FIX_STYLE_TOKEN || github.token }}
 
     - name: cleanup
       if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
@@ -125,23 +127,32 @@ runs:
       run: |
         find . -name . -o -prune -exec rm -rf -- {} +
 
-    # In `fix` mode, we can't directly checkout the code, see the "Checkout PR branch (fix)" step for that case.
     - name: Checkout PR branch (check/suggest)
       uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       with:
         ref: ${{ inputs.ref }}
       if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
 
+    # In `fix` mode the branch to work on is not known until `gh pr checkout` has resolved the
+    # PR, but `gh pr checkout` has to run inside a repository and the final `git push` needs
+    # credentials in `.git/config`. So check the repository out at its default ref first, with
+    # the bot token, and let the next step move HEAD to the PR branch.
+    - name: Checkout repository (fix)
+      uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      with:
+        token: ${{ inputs.BOT_FIX_STYLE_TOKEN || github.token }}
+      if: ${{ steps.user_permission.outputs.require-result == 'true' }}
+
     - name: Checkout PR branch (fix)
       if: ${{ steps.user_permission.outputs.require-result == 'true' }}
       shell: bash
       run: |
-          # covers `comment`s
-          gh pr checkout ${{ github.event.issue.number }} ||
-          # covers `review`s and `review_comment`s
-          gh pr checkout ${{ github.event.pull_request.number }}
+          gh pr checkout "${PR_NUMBER}"
       env:
-          GH_TOKEN: ${{ inputs.BOT_FIX_STYLE_TOKEN }}
+          GH_TOKEN: ${{ inputs.BOT_FIX_STYLE_TOKEN || github.token }}
+          # `issue_comment` carries the PR as `issue`; `pull_request_review` and
+          # `pull_request_review_comment` carry it as `pull_request`. Exactly one is set.
+          PR_NUMBER: ${{ github.event.issue.number }}${{ github.event.pull_request.number }}
 
 
     # Run the case checker action

@@ -39,7 +39,7 @@ Allowed values: "true" or "false". Default value: "false".
 
 ### Input: `BOT_FIX_STYLE_TOKEN`
 
-Secret token used by the style bot to interact with GitHub. Only required for the `fix` mode. When in doubt, set this to the value of `secrets.GITHUB_TOKEN`.
+Secret token used by the style bot to check out the pull request, push the style commit and react to a review comment. Only used in `fix` mode, and defaults to the workflow's own `GITHUB_TOKEN`. When in doubt, set this to the value of `secrets.GITHUB_TOKEN`.
 
 ### Input: `ref`
 
