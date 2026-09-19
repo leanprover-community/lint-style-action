@@ -28,7 +28,8 @@ inputs:
     description: |
       Secret token used by the style bot to check out the pull request, push the style commit and
       react to a review comment. Only used in `fix` mode, and defaults to the workflow's own
-      `GITHUB_TOKEN`.
+      `GITHUB_TOKEN`. Note that the permission check and the reaction on an ordinary pull request
+      comment use the workflow's `GITHUB_TOKEN` regardless of what this is set to.
     required: false
   ref:
     description: |
