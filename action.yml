@@ -44,10 +44,6 @@ outputs:
 runs:
   using: "composite"
   steps:
-    # Every step below is gated on `mode`, so an unrecognised value gates all of them off --
-    # including the checkout -- and the action reports success having done nothing. Callers
-    # pin this action by SHA, so that is also what a pin predating a new mode looks like.
-    # Fail loudly instead.
     - name: Check the mode
       shell: bash
       env:
