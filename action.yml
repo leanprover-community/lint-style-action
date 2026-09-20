@@ -157,12 +157,6 @@ runs:
         fi
 
 
-    - name: install Python
-      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
-      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
-      with:
-        python-version: 3.8
-
     - name: Configure Lean
       if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' || steps.user_permission.outputs.require-result == 'true' }}
       uses: leanprover/lean-action@f807b338d95de7813c5c50d018f1c23c9b93b4ec # 2025-04-24
