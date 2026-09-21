@@ -64,16 +64,6 @@ runs:
         printf $'%s' "${{ github.event.issue.number }}${{ github.event.pull_request.number }}" | hexdump -cC
 
         printf $'bot_fix_style=%s\n' "${bot_fix_style}" >> "${GITHUB_OUTPUT}"
-        # these final variables are probably not relevant for the bot_fix_style action
-        if [ "${AUTHOR}" == 'leanprover-community-mathlib4-bot' ] ||
-           [ "${AUTHOR}" == 'leanprover-community-bot-assistant' ]
-        then
-          printf $'bot=true\n'
-          printf $'bot=true\n' >> "${GITHUB_OUTPUT}"
-        else
-          printf $'bot=false\n'
-          printf $'bot=false\n' >> "${GITHUB_OUTPUT}"
-        fi
 
     - id: user_permission
       if: ${{ inputs.mode == 'fix' && steps.bot_fix_style.outputs.bot_fix_style == 'bot-fix-style' }}
