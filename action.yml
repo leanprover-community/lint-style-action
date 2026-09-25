@@ -44,6 +44,19 @@ outputs:
 runs:
   using: "composite"
   steps:
+    - name: Check the mode
+      shell: bash
+      env:
+        MODE: ${{ inputs.mode }}
+      run: |
+        case "${MODE}" in
+          check|suggest|fix) ;;
+          *)
+            printf '::error::unknown mode %s: expected one of check, suggest, fix\n' "${MODE}"
+            exit 1
+            ;;
+        esac
+
     - name: Find bot fix style
       if: ${{ inputs.mode == 'fix' }}
       id: bot_fix_style
