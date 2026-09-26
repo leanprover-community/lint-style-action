@@ -44,3 +44,13 @@ Secret token used by the style bot to interact with GitHub. Only required for th
 ### Input: `ref`
 
 The branch, tag or SHA to lint. This defaults to the reference or SHA for the event that triggered the workflow. This corresponds to the `ref` input of [actions/checkout](https://github.com/actions/checkout).
+
+## Compatibility
+
+You will need to a step manually installing Python 3.8 to your workflow if you want to use `lint-style-action` with versions of mathlib before [0770cc9](https://github.com/leanprover-community/mathlib4/commit/0770cc908695e32053a911d22b560b577bb3d888) (2026-09-25, v4.35.0-rc3), e.g.:
+```yml
+    - name: install Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: 3.8
+```
