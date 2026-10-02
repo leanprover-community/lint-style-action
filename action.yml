@@ -29,6 +29,8 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # Every later step can rely on `inputs.mode` being one of the values below: if it is not, this
+    # step fails and the rest are skipped. So only the steps that differ between modes test it.
     - name: Check the mode
       shell: bash
       env:
@@ -43,7 +45,6 @@ runs:
         esac
 
     - name: cleanup
-      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
       shell: bash
       run: |
         find . -name . -o -prune -exec rm -rf -- {} +
@@ -52,7 +53,6 @@ runs:
       uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
       with:
         ref: ${{ inputs.ref }}
-      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
 
     # Run the case checker action
     - name: Check Case Sensitivity
@@ -77,7 +77,6 @@ runs:
 
 
     - name: Configure Lean
-      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
       uses: leanprover/lean-action@f061402b660e0c34644504b324e830f2991d4865 # v1.6.1
       with:
         auto-config: false
@@ -103,7 +102,7 @@ runs:
         tool_name: lint-style
 
     - name: Install bibtool
-      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'check' || inputs.mode == 'suggest') }}
+      if: ${{ inputs.lint-bib-file == 'true' }}
       shell: bash
       run: |
         sudo apt-get update
