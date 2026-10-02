@@ -78,7 +78,7 @@ runs:
 
     - name: Configure Lean
       if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
-      uses: leanprover/lean-action@96e06131c0e9943c780388fd166f55d1e2fa0433 # v1.6.0
+      uses: leanprover/lean-action@f061402b660e0c34644504b324e830f2991d4865 # v1.6.1
       with:
         auto-config: false
         use-github-cache: false
