@@ -44,6 +44,15 @@ Allowed values: "true" or "false". Default value: "false".
 
 The branch, tag or SHA to lint. This defaults to the reference or SHA for the event that triggered the workflow. This corresponds to the `ref` input of [actions/checkout](https://github.com/actions/checkout).
 
+## Outputs
+
+### Output: `unfixable-errors`
+
+In `suggest` and `fix-worktree` modes: "true" if the linters reported an error that their automatic
+fixes could not repair, "false" otherwise. After applying the fixes, the action runs
+`lake exe lint-style` (and, with `lint-bib-file`, `scripts/lint-bib.sh`) once more, and this is "true"
+if either still fails. Not meaningful in `check` mode, which fails on any error instead.
+
 ## Things to know
 
 * The action checks the repository out itself, and wipes the workspace before doing so, so it has to
@@ -52,9 +61,10 @@ The branch, tag or SHA to lint. This defaults to the reference or SHA for the ev
   are built from that ref's sources, and `scripts/lint-bib.sh` is that ref's script. If the ref can
   come from someone you don't trust, such as a fork's pull request, don't give the job a token that
   can write or any secrets.
-* `suggest` and `fix-worktree` report success whether or not there were style errors, because
-  `lake exe lint-style --fix` always exits zero. Errors that no fixer can repair are only reported by
-  `check` mode, so keep a `check` run somewhere.
+* `suggest` and `fix-worktree` report success whether or not there were style errors. To find out
+  whether any were left that no fixer could repair, read the `unfixable-errors` output. Keep a `check`
+  run somewhere all the same: it also runs checks that have no fixer at all, for clashing file names,
+  ignored files that are committed anyway and `.lean` files with the executable bit set.
 
 ## Compatibility
 
