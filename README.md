@@ -27,8 +27,12 @@ The actions taken based on style linter output.
 
 * When set to `check`, this action runs the style linters.
 * When set to `suggest`, this action adds review comments with suggestions.
+* When set to `fix-worktree`, this action applies the same fixes as `suggest` but leaves them uncommitted in the working tree instead of posting review comments. The workflow is responsible for doing something with them.
 
-Required. Allowed values: "check" or "suggest".
+Required. Allowed values: "check", "suggest" or "fix-worktree".
+
+`fix-worktree` is for workflows that would rather push the fixes than comment them, for example with
+[pre-commit-ci/lite-action](https://github.com/pre-commit-ci/lite-action).
 
 ### Input: `lint-bib-file`
 
@@ -39,6 +43,18 @@ Allowed values: "true" or "false". Default value: "false".
 ### Input: `ref`
 
 The branch, tag or SHA to lint. This defaults to the reference or SHA for the event that triggered the workflow. This corresponds to the `ref` input of [actions/checkout](https://github.com/actions/checkout).
+
+## Things to know
+
+* The action checks the repository out itself, and wipes the workspace before doing so, so it has to
+  run *before* any step of yours that puts something there -- including your own `actions/checkout`.
+* The action builds and runs code from the ref it lints: `lake exe lint-style` and `lake exe mk_all`
+  are built from that ref's sources, and `scripts/lint-bib.sh` is that ref's script. If the ref can
+  come from someone you don't trust, such as a fork's pull request, don't give the job a token that
+  can write or any secrets.
+* `suggest` and `fix-worktree` report success whether or not there were style errors, because
+  `lake exe lint-style --fix` always exits zero. Errors that no fixer can repair are only reported by
+  `check` mode, so keep a `check` run somewhere.
 
 ## Compatibility
 

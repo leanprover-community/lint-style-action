@@ -6,6 +6,8 @@ description: |
   This action is intended to run in multiple workflows, with different `mode` settings.
   * on pushes to branches, run this action in mode `check` to run the linters.
   * on `pull_request`, run this action in mode `suggest` to run the linters and comment with suggestions.
+  * on `pull_request`, run this action in mode `fix-worktree` to apply the fixes to the working tree
+    without commenting, for a workflow that pushes them itself (e.g. with `pre-commit-ci/lite-action`).
 
 inputs:
   mode:
@@ -13,7 +15,9 @@ inputs:
       The actions taken based on style linter output.
       When set to `check`, this action runs the style linters.
       When set to `suggest`, this action adds review comments with suggestions.
-      Allowed values: "check" or "suggest".
+      When set to `fix-worktree`, this action applies the same fixes as `suggest` but leaves them
+      uncommitted in the working tree instead of posting review comments.
+      Allowed values: "check", "suggest" or "fix-worktree".
     required: true
   lint-bib-file:
     description: |
@@ -37,9 +41,9 @@ runs:
         MODE: ${{ inputs.mode }}
       run: |
         case "${MODE}" in
-          check|suggest) ;;
+          check|suggest|fix-worktree) ;;
           *)
-            printf '::error::unknown mode %s: expected one of check, suggest\n' "${MODE}"
+            printf '::error::unknown mode %s: expected one of check, suggest, fix-worktree\n' "${MODE}"
             exit 1
             ;;
         esac
@@ -83,6 +87,24 @@ runs:
         use-github-cache: false
         use-mathlib-cache: false
 
+    # This comes before `lake exe lint-style`, which only lints the modules these files import: so in
+    # `fix-worktree` mode a module the pull request adds without importing it is linted, and fixed, in
+    # the same run. (In `suggest` mode the order makes no difference, because each suggester step
+    # discards the changes it has just commented on.)
+    - name: update {Mathlib, Tactic, Counterexamples, Archive}.lean
+      if: ${{ inputs.mode == 'suggest' || inputs.mode == 'fix-worktree' }}
+      shell: bash
+      run: |
+        # a non-zero exit here means the import list was out of date, which is the change the
+        # following steps suggest or hand over, not a failure
+        lake exe mk_all || true
+
+    - name: suggester / import list
+      if: ${{ inputs.mode == 'suggest' }}
+      uses: reviewdog/action-suggester@c387862ad6765a9729f2b40ee4d8b5769f2145c7 # v1.26.1
+      with:
+        tool_name: imports
+
     - name: lint
       if: ${{ inputs.mode == 'check' }}
       shell: bash
@@ -90,7 +112,7 @@ runs:
         lake exe lint-style
 
     - name: lint
-      if: ${{ inputs.mode == 'suggest' }}
+      if: ${{ inputs.mode == 'suggest' || inputs.mode == 'fix-worktree' }}
       shell: bash
       run: |
         lake exe lint-style --fix
@@ -114,28 +136,21 @@ runs:
       run: |
         ./scripts/lint-bib.sh
 
-    - name: lint references.bib (suggest)
-      if: ${{ inputs.lint-bib-file == 'true' && inputs.mode == 'suggest' }}
+    - name: lint references.bib (suggest/fix-worktree)
+      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'suggest' || inputs.mode == 'fix-worktree') }}
       shell: bash
       run: |
-        # ignoring the return code allows the following `reviewdog` step to add GitHub suggestions
+        # a non-zero exit here means the file was rewritten, which is the change the following
+        # steps suggest or hand over, not a failure
         ./scripts/lint-bib.sh || true
+        # The script leaves the original behind as `docs/references.bib.old`, which mathlib4 does
+        # not gitignore. In `fix-worktree` mode a workflow that commits untracked files (with
+        # `git add -A`, say) would pick it up. (In `suggest` mode the suggester's `git stash -u`
+        # already sweeps it away.)
+        rm -f docs/references.bib.old
 
     - name: suggester / lint-bib
       if: ${{ inputs.lint-bib-file == 'true' && inputs.mode == 'suggest' }}
       uses: reviewdog/action-suggester@c387862ad6765a9729f2b40ee4d8b5769f2145c7 # v1.26.1
       with:
         tool_name: lint-bib
-
-    - name: update {Mathlib, Tactic, Counterexamples, Archive}.lean
-      if: ${{ inputs.mode == 'suggest' }}
-      shell: bash
-      run: |
-        # ignoring the return code allows the following `reviewdog` step to add GitHub suggestions
-        lake exe mk_all || true
-
-    - name: suggester / import list
-      if: ${{ inputs.mode == 'suggest' }}
-      uses: reviewdog/action-suggester@c387862ad6765a9729f2b40ee4d8b5769f2145c7 # v1.26.1
-      with:
-        tool_name: imports
