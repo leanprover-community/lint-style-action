@@ -42,7 +42,34 @@ Allowed values: "true" or "false". Default value: "false".
 
 ### Input: `ref`
 
-The branch, tag or SHA to lint. This defaults to the reference or SHA for the event that triggered the workflow. This corresponds to the `ref` input of [actions/checkout](https://github.com/actions/checkout).
+The branch, tag or SHA to lint. This defaults to the reference or SHA for the event that triggered the workflow. This corresponds to the `ref` input of [actions/checkout](https://github.com/actions/checkout). Only used when `checkout` is "true".
+
+### Input: `checkout`
+
+Whether this action checks out the repository itself.
+
+* When set to "true", this action wipes the workspace and then checks out `ref`.
+* When set to "false", this action lints the workspace as the workflow left it, which must be a git checkout of the repository at the workspace root. Use this to check out with options this action does not expose, or to run other steps on the checkout first.
+
+Allowed values: "true" or "false". Default value: "true". Setting `ref` together with `checkout: false` is an error.
+
+For example, to lint a fork's pull request from a `pull_request_target` workflow -- which [actions/checkout](https://github.com/actions/checkout) refuses to check out unless you opt in -- check it out yourself:
+```yml
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@<sha>
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          # This job has a read-only token and no secrets, but read
+          # https://gh.io/securely-using-pull_request_target before copying this.
+          allow-unsafe-pr-checkout: true
+      - uses: leanprover-community/lint-style-action@<sha>
+        with:
+          mode: check
+          checkout: false
+```
 
 ## Outputs
 
@@ -55,8 +82,9 @@ if either still fails. Not meaningful in `check` mode, which fails on any error 
 
 ## Things to know
 
-* The action checks the repository out itself, and wipes the workspace before doing so, so it has to
-  run *before* any step of yours that puts something there -- including your own `actions/checkout`.
+* By default the action checks the repository out itself, and wipes the workspace before doing so, so
+  it has to run *before* any step of yours that puts something there -- including your own
+  `actions/checkout`. Set `checkout: false` to check out yourself instead.
 * The action builds and runs code from the ref it lints: `lake exe lint-style` and `lake exe mk_all`
   are built from that ref's sources, and `scripts/lint-bib.sh` is that ref's script. If the ref can
   come from someone you don't trust, such as a fork's pull request, don't give the job a token that

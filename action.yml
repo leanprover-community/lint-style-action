@@ -27,7 +27,18 @@ inputs:
   ref:
     description: |
       The branch, tag or SHA to lint. This defaults to the reference or SHA for the event that triggered the workflow.
+      Only used when `checkout` is "true".
     default: ''
+    required: false
+  checkout:
+    description: |
+      Whether this action checks out the repository itself.
+      When "true", this action wipes the workspace and then checks out `ref`.
+      When "false", this action lints the workspace as the workflow left it, which must be a git
+      checkout of the repository at the workspace root. Use this to check out with options of your
+      own, or to run other steps on the checkout first.
+      Allowed values: "true" or "false". Default value: "true".
+    default: "true"
     required: false
 
 outputs:
@@ -41,12 +52,15 @@ outputs:
 runs:
   using: "composite"
   steps:
-    # Every later step can rely on `inputs.mode` being one of the values below: if it is not, this
-    # step fails and the rest are skipped. So only the steps that differ between modes test it.
-    - name: Check the mode
+    # Every later step can rely on `inputs.mode` and `inputs.checkout` being one of the values below:
+    # if either is not, this step fails and the rest are skipped. So only the steps that differ
+    # between them test them.
+    - name: Check the inputs
       shell: bash
       env:
         MODE: ${{ inputs.mode }}
+        CHECKOUT: ${{ inputs.checkout }}
+        REF: ${{ inputs.ref }}
       run: |
         case "${MODE}" in
           check|suggest|fix-worktree) ;;
@@ -55,8 +69,36 @@ runs:
             exit 1
             ;;
         esac
+        # Rejecting anything but these two, rather than treating it as one of them, matters here:
+        # a misspelt "false" read as "true" would wipe the workspace the workflow meant to keep.
+        case "${CHECKOUT}" in
+          true) ;;
+          false)
+            if [[ -n "${REF}" ]]; then
+              printf '::error::ref (%s) has no effect with checkout: false; check that ref out yourself\n' "${REF}"
+              exit 1
+            fi
+            # The steps below all run at the workspace root, so a checkout made with
+            # `actions/checkout`'s `path:` would otherwise be linted as an empty directory.
+            # (git's own message is left on stderr: in a container job it may be "dubious
+            # ownership", which wants `safe.directory` rather than a different checkout.)
+            if ! toplevel="$(git rev-parse --show-toplevel)"; then
+              printf '::error::checkout: false, but the workspace is not a git checkout\n'
+              exit 1
+            fi
+            if [[ "${toplevel}" != "$(pwd -P)" ]]; then
+              printf '::error::checkout: false, but the git checkout is at %s, not the workspace root\n' "${toplevel}"
+              exit 1
+            fi
+            ;;
+          *)
+            printf '::error::unknown checkout %s: expected true or false\n' "${CHECKOUT}"
+            exit 1
+            ;;
+        esac
 
     - name: cleanup
+      if: ${{ inputs.checkout == 'true' }}
       shell: bash
       run: |
         find . -name . -o -prune -exec rm -rf -- {} +
@@ -65,6 +107,7 @@ runs:
       uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
       with:
         ref: ${{ inputs.ref }}
+      if: ${{ inputs.checkout == 'true' }}
 
     # Run the case checker action
     - name: Check Case Sensitivity
