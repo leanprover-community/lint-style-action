@@ -30,6 +30,14 @@ inputs:
     default: ''
     required: false
 
+outputs:
+  unfixable-errors:
+    description: |
+      (In `suggest` and `fix-worktree` modes:) Did the linters report an error that their automatic
+      fixes could not repair?
+      Allowed values: "true" | "false"
+    value: ${{ steps.lint_style.outputs.unfixable == 'true' || steps.lint_bib.outputs.unfixable == 'true' }}
+
 runs:
   using: "composite"
   steps:
@@ -112,10 +120,19 @@ runs:
         lake exe lint-style
 
     - name: lint
+      id: lint_style
       if: ${{ inputs.mode == 'suggest' || inputs.mode == 'fix-worktree' }}
       shell: bash
       run: |
         lake exe lint-style --fix
+        # `--fix` makes `lint-style` exit zero whatever it found, so run it again without: anything it
+        # still reports is something the fixes could not repair. This is one more pass over the files,
+        # not another build.
+        if lake exe lint-style; then
+          printf 'unfixable=false\n' >> "${GITHUB_OUTPUT}"
+        else
+          printf 'unfixable=true\n' >> "${GITHUB_OUTPUT}"
+        fi
 
     - name: suggester / lint-style
       if: ${{ inputs.mode == 'suggest' }}
@@ -137,12 +154,19 @@ runs:
         ./scripts/lint-bib.sh
 
     - name: lint references.bib (suggest/fix-worktree)
+      id: lint_bib
       if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'suggest' || inputs.mode == 'fix-worktree') }}
       shell: bash
       run: |
-        # a non-zero exit here means the file was rewritten, which is the change the following
-        # steps suggest or hand over, not a failure
-        ./scripts/lint-bib.sh || true
+        # `lint-bib.sh` exits non-zero both when it rewrote the file -- the change the following
+        # steps suggest or hand over, not a failure -- and when it found something it cannot fix,
+        # such as a key with a forbidden character. A second run tells the two apart: the rewritten
+        # file is already in the form the script wants, so only a problem it cannot fix fails again.
+        if ./scripts/lint-bib.sh || ./scripts/lint-bib.sh; then
+          printf 'unfixable=false\n' >> "${GITHUB_OUTPUT}"
+        else
+          printf 'unfixable=true\n' >> "${GITHUB_OUTPUT}"
+        fi
         # The script leaves the original behind as `docs/references.bib.old`, which mathlib4 does
         # not gitignore. In `fix-worktree` mode a workflow that commits untracked files (with
         # `git add -A`, say) would pick it up. (In `suggest` mode the suggester's `git stash -u`
