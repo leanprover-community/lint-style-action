@@ -27,19 +27,14 @@ The actions taken based on style linter output.
 
 * When set to `check`, this action runs the style linters.
 * When set to `suggest`, this action adds review comments with suggestions.
-* When set to `fix`, this action looks for a "bot fix style" comment and pushes a commit with the suggested fixes.
 
-Required. Allowed values: "check", "suggest" or "fix".
+Required. Allowed values: "check" or "suggest".
 
 ### Input: `lint-bib-file`
 
 Enables linting of the bibiliography using `./scripts/lint-bib.sh`.
 
 Allowed values: "true" or "false". Default value: "false".
-
-### Input: `BOT_FIX_STYLE_TOKEN`
-
-Secret token used by the style bot to interact with GitHub. Only required for the `fix` mode. When in doubt, set this to the value of `secrets.GITHUB_TOKEN`.
 
 ### Input: `ref`
 
