@@ -6,6 +6,8 @@ description: |
   This action is intended to run in multiple workflows, with different `mode` settings.
   * on pushes to branches, run this action in mode `check` to run the linters.
   * on `pull_request`, run this action in mode `suggest` to run the linters and comment with suggestions.
+  * on `pull_request`, run this action in mode `fix-worktree` to apply the fixes to the working tree
+    without commenting, for a workflow that pushes them itself (e.g. with `pre-commit-ci/lite-action`).
 
 inputs:
   mode:
@@ -13,7 +15,9 @@ inputs:
       The actions taken based on style linter output.
       When set to `check`, this action runs the style linters.
       When set to `suggest`, this action adds review comments with suggestions.
-      Allowed values: "check" or "suggest".
+      When set to `fix-worktree`, this action applies the same fixes as `suggest` but leaves them
+      uncommitted in the working tree instead of posting review comments.
+      Allowed values: "check", "suggest" or "fix-worktree".
     required: true
   lint-bib-file:
     description: |
@@ -23,27 +27,78 @@ inputs:
   ref:
     description: |
       The branch, tag or SHA to lint. This defaults to the reference or SHA for the event that triggered the workflow.
+      Only used when `checkout` is "true".
     default: ''
     required: false
+  checkout:
+    description: |
+      Whether this action checks out the repository itself.
+      When "true", this action wipes the workspace and then checks out `ref`.
+      When "false", this action lints the workspace as the workflow left it, which must be a git
+      checkout of the repository at the workspace root. Use this to check out with options of your
+      own, or to run other steps on the checkout first.
+      Allowed values: "true" or "false". Default value: "true".
+    default: "true"
+    required: false
+
+outputs:
+  unfixable-errors:
+    description: |
+      (In `suggest` and `fix-worktree` modes:) Did the linters report an error that their automatic
+      fixes could not repair?
+      Allowed values: "true" | "false"
+    value: ${{ steps.lint_style.outputs.unfixable == 'true' || steps.lint_bib.outputs.unfixable == 'true' }}
 
 runs:
   using: "composite"
   steps:
-    - name: Check the mode
+    # Every later step can rely on `inputs.mode` and `inputs.checkout` being one of the values below:
+    # if either is not, this step fails and the rest are skipped. So only the steps that differ
+    # between them test them.
+    - name: Check the inputs
       shell: bash
       env:
         MODE: ${{ inputs.mode }}
+        CHECKOUT: ${{ inputs.checkout }}
+        REF: ${{ inputs.ref }}
       run: |
         case "${MODE}" in
-          check|suggest) ;;
+          check|suggest|fix-worktree) ;;
           *)
-            printf '::error::unknown mode %s: expected one of check, suggest\n' "${MODE}"
+            printf '::error::unknown mode %s: expected one of check, suggest, fix-worktree\n' "${MODE}"
+            exit 1
+            ;;
+        esac
+        # Rejecting anything but these two, rather than treating it as one of them, matters here:
+        # a misspelt "false" read as "true" would wipe the workspace the workflow meant to keep.
+        case "${CHECKOUT}" in
+          true) ;;
+          false)
+            if [[ -n "${REF}" ]]; then
+              printf '::error::ref (%s) has no effect with checkout: false; check that ref out yourself\n' "${REF}"
+              exit 1
+            fi
+            # The steps below all run at the workspace root, so a checkout made with
+            # `actions/checkout`'s `path:` would otherwise be linted as an empty directory.
+            # (git's own message is left on stderr: in a container job it may be "dubious
+            # ownership", which wants `safe.directory` rather than a different checkout.)
+            if ! toplevel="$(git rev-parse --show-toplevel)"; then
+              printf '::error::checkout: false, but the workspace is not a git checkout\n'
+              exit 1
+            fi
+            if [[ "${toplevel}" != "$(pwd -P)" ]]; then
+              printf '::error::checkout: false, but the git checkout is at %s, not the workspace root\n' "${toplevel}"
+              exit 1
+            fi
+            ;;
+          *)
+            printf '::error::unknown checkout %s: expected true or false\n' "${CHECKOUT}"
             exit 1
             ;;
         esac
 
     - name: cleanup
-      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
+      if: ${{ inputs.checkout == 'true' }}
       shell: bash
       run: |
         find . -name . -o -prune -exec rm -rf -- {} +
@@ -52,7 +107,7 @@ runs:
       uses: actions/checkout@f548e57e544e1ff5a4c46bf1e1b8685f8e4a348a # v7.0.1
       with:
         ref: ${{ inputs.ref }}
-      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
+      if: ${{ inputs.checkout == 'true' }}
 
     # Run the case checker action
     - name: Check Case Sensitivity
@@ -77,12 +132,29 @@ runs:
 
 
     - name: Configure Lean
-      if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
       uses: leanprover/lean-action@f061402b660e0c34644504b324e830f2991d4865 # v1.6.1
       with:
         auto-config: false
         use-github-cache: false
         use-mathlib-cache: false
+
+    # This comes before `lake exe lint-style`, which only lints the modules these files import: so in
+    # `fix-worktree` mode a module the pull request adds without importing it is linted, and fixed, in
+    # the same run. (In `suggest` mode the order makes no difference, because each suggester step
+    # discards the changes it has just commented on.)
+    - name: update {Mathlib, Tactic, Counterexamples, Archive}.lean
+      if: ${{ inputs.mode == 'suggest' || inputs.mode == 'fix-worktree' }}
+      shell: bash
+      run: |
+        # a non-zero exit here means the import list was out of date, which is the change the
+        # following steps suggest or hand over, not a failure
+        lake exe mk_all || true
+
+    - name: suggester / import list
+      if: ${{ inputs.mode == 'suggest' }}
+      uses: reviewdog/action-suggester@c387862ad6765a9729f2b40ee4d8b5769f2145c7 # v1.26.1
+      with:
+        tool_name: imports
 
     - name: lint
       if: ${{ inputs.mode == 'check' }}
@@ -91,10 +163,19 @@ runs:
         lake exe lint-style
 
     - name: lint
-      if: ${{ inputs.mode == 'suggest' }}
+      id: lint_style
+      if: ${{ inputs.mode == 'suggest' || inputs.mode == 'fix-worktree' }}
       shell: bash
       run: |
         lake exe lint-style --fix
+        # `--fix` makes `lint-style` exit zero whatever it found, so run it again without: anything it
+        # still reports is something the fixes could not repair. This is one more pass over the files,
+        # not another build.
+        if lake exe lint-style; then
+          printf 'unfixable=false\n' >> "${GITHUB_OUTPUT}"
+        else
+          printf 'unfixable=true\n' >> "${GITHUB_OUTPUT}"
+        fi
 
     - name: suggester / lint-style
       if: ${{ inputs.mode == 'suggest' }}
@@ -103,7 +184,7 @@ runs:
         tool_name: lint-style
 
     - name: Install bibtool
-      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'check' || inputs.mode == 'suggest') }}
+      if: ${{ inputs.lint-bib-file == 'true' }}
       shell: bash
       run: |
         sudo apt-get update
@@ -115,28 +196,28 @@ runs:
       run: |
         ./scripts/lint-bib.sh
 
-    - name: lint references.bib (suggest)
-      if: ${{ inputs.lint-bib-file == 'true' && inputs.mode == 'suggest' }}
+    - name: lint references.bib (suggest/fix-worktree)
+      id: lint_bib
+      if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'suggest' || inputs.mode == 'fix-worktree') }}
       shell: bash
       run: |
-        # ignoring the return code allows the following `reviewdog` step to add GitHub suggestions
-        ./scripts/lint-bib.sh || true
+        # `lint-bib.sh` exits non-zero both when it rewrote the file -- the change the following
+        # steps suggest or hand over, not a failure -- and when it found something it cannot fix,
+        # such as a key with a forbidden character. A second run tells the two apart: the rewritten
+        # file is already in the form the script wants, so only a problem it cannot fix fails again.
+        if ./scripts/lint-bib.sh || ./scripts/lint-bib.sh; then
+          printf 'unfixable=false\n' >> "${GITHUB_OUTPUT}"
+        else
+          printf 'unfixable=true\n' >> "${GITHUB_OUTPUT}"
+        fi
+        # The script leaves the original behind as `docs/references.bib.old`, which mathlib4 does
+        # not gitignore. In `fix-worktree` mode a workflow that commits untracked files (with
+        # `git add -A`, say) would pick it up. (In `suggest` mode the suggester's `git stash -u`
+        # already sweeps it away.)
+        rm -f docs/references.bib.old
 
     - name: suggester / lint-bib
       if: ${{ inputs.lint-bib-file == 'true' && inputs.mode == 'suggest' }}
       uses: reviewdog/action-suggester@c387862ad6765a9729f2b40ee4d8b5769f2145c7 # v1.26.1
       with:
         tool_name: lint-bib
-
-    - name: update {Mathlib, Tactic, Counterexamples, Archive}.lean
-      if: ${{ inputs.mode == 'suggest' }}
-      shell: bash
-      run: |
-        # ignoring the return code allows the following `reviewdog` step to add GitHub suggestions
-        lake exe mk_all || true
-
-    - name: suggester / import list
-      if: ${{ inputs.mode == 'suggest' }}
-      uses: reviewdog/action-suggester@c387862ad6765a9729f2b40ee4d8b5769f2145c7 # v1.26.1
-      with:
-        tool_name: imports

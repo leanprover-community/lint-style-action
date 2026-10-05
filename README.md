@@ -27,8 +27,12 @@ The actions taken based on style linter output.
 
 * When set to `check`, this action runs the style linters.
 * When set to `suggest`, this action adds review comments with suggestions.
+* When set to `fix-worktree`, this action applies the same fixes as `suggest` but leaves them uncommitted in the working tree instead of posting review comments. The workflow is responsible for doing something with them.
 
-Required. Allowed values: "check" or "suggest".
+Required. Allowed values: "check", "suggest" or "fix-worktree".
+
+`fix-worktree` is for workflows that would rather push the fixes than comment them, for example with
+[pre-commit-ci/lite-action](https://github.com/pre-commit-ci/lite-action).
 
 ### Input: `lint-bib-file`
 
@@ -38,7 +42,57 @@ Allowed values: "true" or "false". Default value: "false".
 
 ### Input: `ref`
 
-The branch, tag or SHA to lint. This defaults to the reference or SHA for the event that triggered the workflow. This corresponds to the `ref` input of [actions/checkout](https://github.com/actions/checkout).
+The branch, tag or SHA to lint. This defaults to the reference or SHA for the event that triggered the workflow. This corresponds to the `ref` input of [actions/checkout](https://github.com/actions/checkout). Only used when `checkout` is "true".
+
+### Input: `checkout`
+
+Whether this action checks out the repository itself.
+
+* When set to "true", this action wipes the workspace and then checks out `ref`.
+* When set to "false", this action lints the workspace as the workflow left it, which must be a git checkout of the repository at the workspace root. Use this to check out with options this action does not expose, or to run other steps on the checkout first.
+
+Allowed values: "true" or "false". Default value: "true". Setting `ref` together with `checkout: false` is an error.
+
+For example, to lint a fork's pull request from a `pull_request_target` workflow -- which [actions/checkout](https://github.com/actions/checkout) refuses to check out unless you opt in -- check it out yourself:
+```yml
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@<sha>
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+          # This job has a read-only token and no secrets, but read
+          # https://gh.io/securely-using-pull_request_target before copying this.
+          allow-unsafe-pr-checkout: true
+      - uses: leanprover-community/lint-style-action@<sha>
+        with:
+          mode: check
+          checkout: false
+```
+
+## Outputs
+
+### Output: `unfixable-errors`
+
+In `suggest` and `fix-worktree` modes: "true" if the linters reported an error that their automatic
+fixes could not repair, "false" otherwise. After applying the fixes, the action runs
+`lake exe lint-style` (and, with `lint-bib-file`, `scripts/lint-bib.sh`) once more, and this is "true"
+if either still fails. Not meaningful in `check` mode, which fails on any error instead.
+
+## Things to know
+
+* By default the action checks the repository out itself, and wipes the workspace before doing so, so
+  it has to run *before* any step of yours that puts something there -- including your own
+  `actions/checkout`. Set `checkout: false` to check out yourself instead.
+* The action builds and runs code from the ref it lints: `lake exe lint-style` and `lake exe mk_all`
+  are built from that ref's sources, and `scripts/lint-bib.sh` is that ref's script. If the ref can
+  come from someone you don't trust, such as a fork's pull request, don't give the job a token that
+  can write or any secrets.
+* `suggest` and `fix-worktree` report success whether or not there were style errors. To find out
+  whether any were left that no fixer could repair, read the `unfixable-errors` output. Keep a `check`
+  run somewhere all the same: it also runs checks that have no fixer at all, for clashing file names,
+  ignored files that are committed anyway and `.lean` files with the executable bit set.
 
 ## Compatibility
 
