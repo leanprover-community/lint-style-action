@@ -44,3 +44,9 @@ Secret token used by the style bot to interact with GitHub. Only required for th
 ### Input: `ref`
 
 The branch, tag or SHA to lint. This defaults to the reference or SHA for the event that triggered the workflow. This corresponds to the `ref` input of [actions/checkout](https://github.com/actions/checkout).
+
+### Input: `allow-unsafe-pr-checkout`
+
+Allows the `check` and `suggest` modes to check out fork pull request code from a workflow triggered by `pull_request_target` or `workflow_run`. This corresponds to the `allow-unsafe-pr-checkout` input of [actions/checkout](https://github.com/actions/checkout). Such a workflow runs the fork's code with access to the base repository's cache scope. Read [Securely using `pull_request_target`](https://gh.io/securely-using-pull_request_target) before you set this input.
+
+Allowed values: "true" or "false". Default value: "false".

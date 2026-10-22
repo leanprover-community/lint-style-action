@@ -33,6 +33,13 @@ inputs:
       The branch, tag or SHA to lint. This defaults to the reference or SHA for the event that triggered the workflow.
     default: ''
     required: false
+  allow-unsafe-pr-checkout:
+    description: |
+      Allows the `check` and `suggest` modes to check out fork pull request code
+      from a workflow triggered by `pull_request_target` or `workflow_run`.
+      This corresponds to the `allow-unsafe-pr-checkout` input of `actions/checkout`.
+    default: 'false'
+    required: false
 
 outputs:
   user_permission:
@@ -121,6 +128,7 @@ runs:
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         ref: ${{ inputs.ref }}
+        allow-unsafe-pr-checkout: ${{ inputs.allow-unsafe-pr-checkout }}
       if: ${{ inputs.mode == 'check' || inputs.mode == 'suggest' }}
 
     - name: Checkout PR branch (fix)
