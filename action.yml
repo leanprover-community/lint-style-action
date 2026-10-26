@@ -114,9 +114,22 @@ runs:
       if: ${{ inputs.mode == 'check' }}
       uses: credfeto/action-case-checker@cb652aeab29ed363bbdb7d9ee1bfcc010c46cac5 # v1.3.0
 
+    # This replaces `credfeto/action-no-ignored-files`, which failed on any output from
+    # `git check-ignore -v`. That also prints files whose last matching pattern is a `!` one, which
+    # re-includes them, so a `.gitignore` with a correct `!` pattern failed the check.
     - name: Look for ignored files
       if: ${{ inputs.mode == 'check' }}
-      uses: credfeto/action-no-ignored-files@4fccae50720d89bef0cd9dc99a85a19b765d2e70 # v1.2.0
+      shell: bash
+      run: |
+        # git's own answer to "which tracked files would `git add` skip?", `!` patterns included
+        ignored_files="$(git ls-files --cached --ignored --exclude-standard)"
+        if [[ -n "$ignored_files" ]]
+        then
+          echo "ERROR: The following files are committed, but a .gitignore pattern ignores them."
+          # name the pattern responsible for each one, or list the files if that comes up empty
+          git check-ignore --verbose --no-index --stdin <<< "$ignored_files" || printf '%s\n' "$ignored_files"
+          exit 1
+        fi
 
     - name: "Check for Lean files with the executable bit set"
       if: ${{ inputs.mode == 'check' }}
