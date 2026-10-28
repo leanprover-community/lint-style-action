@@ -123,8 +123,7 @@ runs:
         if [[ -n "$ignored_files" ]]
         then
           echo "ERROR: The following files are committed, but a .gitignore pattern ignores them."
-          # name the pattern responsible for each one, or list the files if that comes up empty
-          git check-ignore --verbose --no-index --stdin <<< "$ignored_files" || printf '%s\n' "$ignored_files"
+          git check-ignore --verbose --no-index --stdin --non-matching <<< "$ignored_files"
           exit 1
         fi
 
