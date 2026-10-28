@@ -116,7 +116,16 @@ runs:
 
     - name: Look for ignored files
       if: ${{ inputs.mode == 'check' }}
-      uses: credfeto/action-no-ignored-files@4fccae50720d89bef0cd9dc99a85a19b765d2e70 # v1.2.0
+      shell: bash
+      run: |
+        # which tracked files would `git add` skip, `!` patterns included
+        ignored_files="$(git ls-files --cached --ignored --exclude-standard)"
+        if [[ -n "$ignored_files" ]]
+        then
+          echo "ERROR: The following files are committed, but a .gitignore pattern ignores them."
+          git check-ignore --verbose --no-index --stdin --non-matching <<< "$ignored_files"
+          exit 1
+        fi
 
     - name: "Check for Lean files with the executable bit set"
       if: ${{ inputs.mode == 'check' }}
