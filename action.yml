@@ -197,11 +197,20 @@ runs:
       shell: bash
       run: |
         sudo apt-get update
-        sudo apt-get install -y bibtool
+        # bibtool's recommended packages (texlive-base, fonts and PDF libraries: about 100 MB) hold
+        # the job up when the Ubuntu mirrors are slow. bibtool needs only one thing from them: it
+        # looks its input files up with kpathsea, and the search path that starts at the current
+        # directory is set in texlive-base's `texmf.cnf`. Without it, `bibtool docs/references.bib`
+        # warns that the file is not found, prints nothing and exits zero. So the steps that run
+        # bibtool set that search path themselves, with `BIBINPUTS`.
+        sudo apt-get install -y --no-install-recommends bibtool
 
     - name: lint references.bib (check)
       if: ${{ inputs.lint-bib-file == 'true' && inputs.mode == 'check' }}
       shell: bash
+      env:
+        # see "Install bibtool"
+        BIBINPUTS: .
       run: |
         ./scripts/lint-bib.sh
 
@@ -209,6 +218,9 @@ runs:
       id: lint_bib
       if: ${{ inputs.lint-bib-file == 'true' && (inputs.mode == 'suggest' || inputs.mode == 'fix-worktree') }}
       shell: bash
+      env:
+        # see "Install bibtool"
+        BIBINPUTS: .
       run: |
         # `lint-bib.sh` exits non-zero both when it rewrote the file -- the change the following
         # steps suggest or hand over, not a failure -- and when it found something it cannot fix,
